@@ -59,9 +59,10 @@ export async function lookupByOLID(olid) {
   return normalizeEntry(entry);
 }
 
-export async function searchBooks(query) {
+export async function searchBooks(query, { signal } = {}) {
   const res = await fetch(
-    `${BASE}/search.json?q=${encodeURIComponent(query)}&limit=20&fields=key,title,subtitle,author_name,isbn,cover_i,first_publish_year,publisher,number_of_pages_median,edition_key,cover_edition_key`
+    `${BASE}/search.json?q=${encodeURIComponent(query)}&limit=15&fields=key,title,subtitle,author_name,isbn,cover_i,first_publish_year,publisher,number_of_pages_median,edition_key,cover_edition_key`,
+    { signal }
   );
   if (!res.ok) return [];
   const data = await res.json();
@@ -73,7 +74,8 @@ export async function searchBooks(query) {
     publisher: (d.publisher || [])[0] || '',
     publishedYear: d.first_publish_year || null,
     pageCount: d.number_of_pages_median || null,
-    cover: d.cover_i ? coverUrl(d.cover_i, 'M') : null,
+    cover: d.cover_i ? coverUrl(d.cover_i, 'S') : null,
+    coverMedium: d.cover_i ? coverUrl(d.cover_i, 'M') : null,
     editionKey: d.cover_edition_key || (d.edition_key || [])[0] || null
   }));
 }

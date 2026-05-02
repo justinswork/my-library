@@ -32,30 +32,31 @@ export default function SearchPage() {
   const [replacing, setReplacing] = useState(false);
 
   useEffect(() => {
-    const t = setTimeout(() => setDebounced(query.trim()), 300);
+    const t = setTimeout(() => setDebounced(query.trim()), 150);
     return () => clearTimeout(t);
   }, [query]);
 
   useEffect(() => {
     if (!debounced) {
       setResults([]);
+      setSearching(false);
       return;
     }
-    let cancelled = false;
+    const controller = new AbortController();
     setSearching(true);
-    searchBooks(debounced)
+    searchBooks(debounced, { signal: controller.signal })
       .then((r) => {
-        if (!cancelled) setResults(r);
+        if (controller.signal.aborted) return;
+        setResults(r);
       })
-      .catch(() => {
-        if (!cancelled) setResults([]);
+      .catch((err) => {
+        if (err?.name === 'AbortError') return;
+        setResults([]);
       })
       .finally(() => {
-        if (!cancelled) setSearching(false);
+        if (!controller.signal.aborted) setSearching(false);
       });
-    return () => {
-      cancelled = true;
-    };
+    return () => controller.abort();
   }, [debounced]);
 
   useEffect(() => {
@@ -180,14 +181,20 @@ export default function SearchPage() {
             autoFocus
             className="ios-input pl-10 pr-10 bg-white"
           />
-          {query && (
-            <button
-              type="button"
-              onClick={() => setQuery('')}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-ash p-1"
-            >
-              <X size={16} />
-            </button>
+          {searching ? (
+            <div className="absolute right-3 top-1/2 -translate-y-1/2">
+              <div className="w-4 h-4 rounded-full border-2 border-hairline border-t-rose animate-spin" />
+            </div>
+          ) : (
+            query && (
+              <button
+                type="button"
+                onClick={() => setQuery('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-ash p-1"
+              >
+                <X size={16} />
+              </button>
+            )
           )}
         </div>
       </div>
@@ -199,7 +206,7 @@ export default function SearchPage() {
             title="Find a book"
             body="Search by title, author, or ISBN to add to your library or wishlist."
           />
-        ) : searching && results.length === 0 ? (
+        ) : results.length === 0 && searching ? (
           <div className="py-12 text-center text-ash">Searching…</div>
         ) : results.length === 0 ? (
           <EmptyState
