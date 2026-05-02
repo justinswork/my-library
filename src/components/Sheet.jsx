@@ -1,12 +1,35 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 
 export default function Sheet({ open, onClose, children, title }) {
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
   useEffect(() => {
     if (!open) return;
-    const onKey = (e) => e.key === 'Escape' && onClose?.();
+    const onKey = (e) => e.key === 'Escape' && onCloseRef.current?.();
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [open, onClose]);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    let closedByBack = false;
+    window.history.pushState({ sheetOpen: true }, '');
+
+    const onPop = () => {
+      closedByBack = true;
+      onCloseRef.current?.();
+    };
+    window.addEventListener('popstate', onPop);
+
+    return () => {
+      window.removeEventListener('popstate', onPop);
+      if (!closedByBack && window.history.state?.sheetOpen) {
+        window.history.back();
+      }
+    };
+  }, [open]);
 
   if (!open) return null;
 

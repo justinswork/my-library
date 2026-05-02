@@ -11,7 +11,8 @@ import {
   Folder,
   BookMarked,
   SlidersHorizontal,
-  Copy
+  Copy,
+  BookOpen
 } from 'lucide-react';
 import NavBar from '../components/NavBar.jsx';
 import BookListItem from '../components/BookListItem.jsx';
@@ -34,6 +35,7 @@ export default function LibraryPage() {
   const [query, setQuery] = useState('');
   const [filterCollection, setFilterCollection] = useState('all');
   const [showDuplicatesOnly, setShowDuplicatesOnly] = useState(false);
+  const [readFilter, setReadFilter] = useState('all'); // 'all' | 'read' | 'unread'
   const [showPicker, setShowPicker] = useState(false);
   const [showOptions, setShowOptions] = useState(false);
   const [sortBy, setSortBy] = useState(() => {
@@ -79,7 +81,12 @@ export default function LibraryPage() {
         return (b.collectionIds || []).includes(filterCollection);
       })
       .filter((b) => matchesQuery(b, query))
-      .filter((b) => !showDuplicatesOnly || copiesOf(b) > 1);
+      .filter((b) => !showDuplicatesOnly || copiesOf(b) > 1)
+      .filter((b) => {
+        if (readFilter === 'read') return b.readStatus === 'read';
+        if (readFilter === 'unread') return b.readStatus === 'unread';
+        return true;
+      });
 
     const titleCmp = (a, b) =>
       (a.title || '').localeCompare(b.title || '', undefined, { sensitivity: 'base' });
@@ -89,9 +96,9 @@ export default function LibraryPage() {
     if (sortBy === 'title-desc') return [...arr].sort((a, b) => titleCmp(b, a));
     if (sortBy === 'date-asc') return [...arr].sort((a, b) => dateOf(a) - dateOf(b));
     return arr;
-  }, [books, filterCollection, query, wishlist, showDuplicatesOnly, sortBy]);
+  }, [books, filterCollection, query, wishlist, showDuplicatesOnly, readFilter, sortBy]);
 
-  const filtersActive = sortBy !== 'date-desc' || showDuplicatesOnly;
+  const filtersActive = sortBy !== 'date-desc' || showDuplicatesOnly || readFilter !== 'all';
 
   const currentName =
     filterCollection === 'all'
@@ -221,6 +228,28 @@ export default function LibraryPage() {
                 >
                   <div className="flex-1 font-medium">{opt.label}</div>
                   {sortBy === opt.id && <Check size={20} className="text-rose-deep" />}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <div className="text-[12px] uppercase tracking-wider text-ash px-1 pb-1.5">
+              Read status
+            </div>
+            <div className="ios-list">
+              {[
+                { id: 'all', label: 'All books' },
+                { id: 'read', label: 'Read only' },
+                { id: 'unread', label: 'Unread only' }
+              ].map((opt) => (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => setReadFilter(opt.id)}
+                  className="ios-row w-full text-left"
+                >
+                  <div className="flex-1 font-medium">{opt.label}</div>
+                  {readFilter === opt.id && <Check size={20} className="text-rose-deep" />}
                 </button>
               ))}
             </div>

@@ -3,35 +3,41 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import NavBar from '../components/NavBar.jsx';
 import BookForm from '../components/BookForm.jsx';
 import { useData } from '../contexts/DataContext.jsx';
+import {
+  pickDefaultCollectionIds,
+  setLastCollections
+} from '../utils/lastCollections.js';
 
 export default function ManualAddPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { addBook, collections, wishlist } = useData();
+  const { addBook, collections } = useData();
   const [busy, setBusy] = useState(false);
 
   const fromScan = location.state?.book || null;
   const presetCollectionIds = location.state?.collectionIds || [];
-  const defaultMyBooks = collections.find((c) => !c.isWishlist && c.name === 'My Books');
+  const defaults = pickDefaultCollectionIds(collections);
 
   const initial = fromScan
     ? {
         ...fromScan,
-        collectionIds: presetCollectionIds.length
-          ? presetCollectionIds
-          : defaultMyBooks
-          ? [defaultMyBooks.id]
-          : []
+        collectionIds: presetCollectionIds.length ? presetCollectionIds : defaults
       }
-    : {
-        collectionIds: defaultMyBooks ? [defaultMyBooks.id] : []
-      };
+    : { collectionIds: defaults };
 
   const submit = async (data) => {
     setBusy(true);
     try {
       const { id, merged } = await addBook(data);
-      navigate(`/book/${id}`, { replace: true, state: { merged } });
+      setLastCollections(data.collectionIds || []);
+      if (fromScan) {
+        navigate('/scan', {
+          replace: true,
+          state: { added: { title: data.title, merged } }
+        });
+      } else {
+        navigate(`/book/${id}`, { replace: true, state: { merged } });
+      }
     } finally {
       setBusy(false);
     }

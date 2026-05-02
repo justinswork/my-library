@@ -1,5 +1,5 @@
-import { useRef, useState, useMemo } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useEffect, useRef, useState, useMemo } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Keyboard, RotateCcw, Library, AlertTriangle, Check, Camera } from 'lucide-react';
 import { Html5Qrcode } from 'html5-qrcode';
 import NavBar from '../components/NavBar.jsx';
@@ -12,14 +12,29 @@ import { authorList, findExistingBook, copiesOf } from '../utils/book.js';
 
 export default function ScanPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { books, wishlist, incrementCopies } = useData();
   const [result, setResult] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [scannedIsbn, setScannedIsbn] = useState(null);
   const [confirmation, setConfirmation] = useState('');
+  const [pageBanner, setPageBanner] = useState('');
   const [decodingPhoto, setDecodingPhoto] = useState(false);
   const photoInputRef = useRef(null);
+
+  useEffect(() => {
+    const added = location.state?.added;
+    if (!added) return;
+    const msg = added.merged
+      ? `Added another copy of "${added.title}"`
+      : `Added "${added.title}" to your library`;
+    setPageBanner(msg);
+    navigate(location.pathname, { replace: true, state: null });
+    const t = setTimeout(() => setPageBanner(''), 3500);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const existing = useMemo(() => {
     if (!result) return null;
@@ -132,6 +147,12 @@ export default function ScanPage() {
       />
 
       <div className="px-4 pb-6">
+        {pageBanner && (
+          <div className="ios-card p-3 mb-3 text-[13px] bg-emerald-50 border border-emerald-200 text-emerald-800 flex items-center gap-2">
+            <Check size={16} className="shrink-0" />
+            <div>{pageBanner}</div>
+          </div>
+        )}
         <Scanner onDetected={handleDetected} paused={!!result || busy || decodingPhoto} />
         <p className="text-center text-[13px] text-ash mt-3">
           Hold the barcode 4–6 inches from the camera. Tap the screen to refocus.

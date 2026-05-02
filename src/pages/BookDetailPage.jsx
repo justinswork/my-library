@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
-import { Pencil, Trash2, Star, Minus, Plus } from 'lucide-react';
+import { Pencil, Trash2, Star, Minus, Plus, Search } from 'lucide-react';
 import NavBar from '../components/NavBar.jsx';
 import BookCover from '../components/BookCover.jsx';
 import Sheet from '../components/Sheet.jsx';
@@ -26,12 +26,19 @@ export default function BookDetailPage() {
   const [showCols, setShowCols] = useState(false);
   const [colSelection, setColSelection] = useState([]);
   const [mergedBanner, setMergedBanner] = useState(!!location.state?.merged);
+  const [updatedBanner, setUpdatedBanner] = useState(!!location.state?.detailsUpdated);
 
   useEffect(() => {
     if (!mergedBanner) return;
     const t = setTimeout(() => setMergedBanner(false), 4000);
     return () => clearTimeout(t);
   }, [mergedBanner]);
+
+  useEffect(() => {
+    if (!updatedBanner) return;
+    const t = setTimeout(() => setUpdatedBanner(false), 4000);
+    return () => clearTimeout(t);
+  }, [updatedBanner]);
 
   if (!loaded) return <Loader />;
   const book = books.find((b) => b.id === id);
@@ -45,6 +52,8 @@ export default function BookDetailPage() {
   }
 
   const copies = copiesOf(book);
+  const readStatus =
+    book.readStatus === 'read' || book.readStatus === 'unread' ? book.readStatus : null;
   const collectionNames = (book.collectionIds || [])
     .map((cid) => collections.find((c) => c.id === cid)?.name)
     .filter(Boolean);
@@ -53,6 +62,11 @@ export default function BookDetailPage() {
     wishlist &&
     (book.collectionIds || []).length === 1 &&
     (book.collectionIds || [])[0] === wishlist.id;
+
+  const setStatus = (status) => {
+    const next = readStatus === status ? null : status;
+    updateBook(book.id, { readStatus: next });
+  };
 
   const openCols = () => {
     setColSelection(book.collectionIds || []);
@@ -94,6 +108,11 @@ export default function BookDetailPage() {
             Already in your library — added another copy.
           </div>
         )}
+        {updatedBanner && (
+          <div className="w-full ios-card p-3 text-[13px] bg-emerald-50 border border-emerald-200 text-emerald-800">
+            Details updated from the catalog.
+          </div>
+        )}
         <BookCover src={book.cover} title={book.title} size="xl" />
         <div className="text-center">
           <h2 className="text-[22px] font-bold tracking-tight leading-tight">
@@ -108,28 +127,16 @@ export default function BookDetailPage() {
         </div>
 
         {!onlyOnWishlist && (
-          <div className="w-full">
-            <SectionLabel>Copies owned</SectionLabel>
-            <div className="ios-card p-3 flex items-center justify-between">
-              <button
-                type="button"
-                onClick={() => decrementCopies(book.id)}
-                disabled={copies <= 1}
-                aria-label="Decrease copies"
-                className="w-10 h-10 rounded-full bg-rose-soft/60 text-rose-deep flex items-center justify-center disabled:opacity-40 active:opacity-70"
-              >
-                <Minus size={18} strokeWidth={2.4} />
-              </button>
-              <div className="text-[28px] font-bold tabular-nums">{copies}</div>
-              <button
-                type="button"
-                onClick={() => incrementCopies(book.id)}
-                aria-label="Increase copies"
-                className="w-10 h-10 rounded-full bg-rose text-white flex items-center justify-center active:opacity-70"
-              >
-                <Plus size={18} strokeWidth={2.4} />
-              </button>
-            </div>
+          <div className="flex gap-2">
+            <StatusButton active={readStatus === 'read'} onClick={() => setStatus('read')}>
+              Read
+            </StatusButton>
+            <StatusButton
+              active={readStatus === 'unread'}
+              onClick={() => setStatus('unread')}
+            >
+              Unread
+            </StatusButton>
           </div>
         )}
 
@@ -170,6 +177,33 @@ export default function BookDetailPage() {
             {book.publisher && <Row label="Publisher" value={book.publisher} />}
             {book.publishedYear && <Row label="Year" value={String(book.publishedYear)} />}
             {book.pageCount && <Row label="Pages" value={String(book.pageCount)} />}
+            {!onlyOnWishlist && (
+              <div className="px-4 py-2.5 flex justify-between items-center gap-3">
+                <span className="text-ash">Copies</span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => decrementCopies(book.id)}
+                    disabled={copies <= 1}
+                    aria-label="Decrease copies"
+                    className="w-7 h-7 rounded-full bg-hairline text-ink flex items-center justify-center disabled:opacity-40 active:opacity-70"
+                  >
+                    <Minus size={14} strokeWidth={2.4} />
+                  </button>
+                  <span className="font-semibold tabular-nums w-5 text-center">
+                    {copies}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => incrementCopies(book.id)}
+                    aria-label="Increase copies"
+                    className="w-7 h-7 rounded-full bg-rose text-white flex items-center justify-center active:opacity-70"
+                  >
+                    <Plus size={14} strokeWidth={2.4} />
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -187,6 +221,18 @@ export default function BookDetailPage() {
           </div>
         )}
 
+        <button
+          onClick={() =>
+            navigate('/find', {
+              state: { updateMode: { bookId: book.id, query: book.title } }
+            })
+          }
+          className="w-full ios-button-secondary"
+        >
+          <Search size={16} className="inline -mt-0.5 mr-2" />
+          Find better details
+        </button>
+
         <button onClick={remove} className="w-full ios-button-secondary text-rose-deep mb-4">
           <Trash2 size={16} className="inline -mt-0.5 mr-2" />
           Delete book
@@ -202,6 +248,21 @@ export default function BookDetailPage() {
         </div>
       </Sheet>
     </>
+  );
+}
+
+function StatusButton({ active, onClick, children }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={`px-4 py-1.5 rounded-full text-[13px] font-semibold transition-colors ${
+        active ? 'bg-rose text-white' : 'bg-white text-ink border border-hairline'
+      }`}
+    >
+      {children}
+    </button>
   );
 }
 

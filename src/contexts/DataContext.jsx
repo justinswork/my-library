@@ -166,7 +166,8 @@ async function addBook(uid, book, existingBooks) {
     description: book.description || '',
     notes: book.notes || '',
     collectionIds: book.collectionIds || [],
-    copies: 1,
+    copies: typeof book.copies === 'number' && book.copies > 0 ? book.copies : 1,
+    readStatus: book.readStatus === 'read' || book.readStatus === 'unread' ? book.readStatus : null,
     addedAt: serverTimestamp()
   };
   const created = await addDoc(ref, payload);
@@ -286,6 +287,7 @@ async function importData(uid, payload, mode, currentBooks, currentCollections) 
       notes: b.notes || '',
       collectionIds: remapped,
       copies: typeof b.copies === 'number' ? b.copies : 1,
+      readStatus: b.readStatus === 'read' || b.readStatus === 'unread' ? b.readStatus : null,
       addedAt: reviveTimestamp(b.addedAt)
     };
 

@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Search, X, ChevronRight, Library, Star } from 'lucide-react';
 import NavBar from '../components/NavBar.jsx';
 import BookCover from '../components/BookCover.jsx';
@@ -8,26 +9,27 @@ import EmptyState from '../components/EmptyState.jsx';
 import { useData } from '../contexts/DataContext.jsx';
 import { searchBooks, lookupByISBN, lookupByOLID } from '../api/openLibrary.js';
 import { authorList, findExistingBook, copiesOf } from '../utils/book.js';
+import {
+  pickDefaultCollectionIds,
+  setLastCollections
+} from '../utils/lastCollections.js';
 
 export default function SearchPage() {
-  const { books, addBook, collections, wishlist } = useData();
-  const [query, setQuery] = useState('');
-  const [debounced, setDebounced] = useState('');
+  const { books, addBook, updateBook, collections, wishlist } = useData();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const updateMode = location.state?.updateMode || null;
+  const targetBook = updateMode ? books.find((b) => b.id === updateMode.bookId) : null;
+
+  const [query, setQuery] = useState(updateMode?.query || '');
+  const [debounced, setDebounced] = useState(updateMode?.query?.trim() || '');
   const [results, setResults] = useState([]);
   const [searching, setSearching] = useState(false);
   const [selected, setSelected] = useState(null);
   const [enriched, setEnriched] = useState(null);
   const [collectionIds, setCollectionIds] = useState([]);
   const [adding, setAdding] = useState(false);
-
-  const lastSelectionRef = useRef(null);
-  const defaultMyBooks = useMemo(
-    () =>
-      collections.find((c) => !c.isWishlist && c.name === 'My Books') ||
-      collections.find((c) => !c.isWishlist) ||
-      null,
-    [collections]
-  );
+  const [replacing, setReplacing] = useState(false);
 
   useEffect(() => {
     const t = setTimeout(() => setDebounced(query.trim()), 300);
@@ -63,10 +65,8 @@ export default function SearchPage() {
     const existing = findExistingBook(books, selected);
     if (existing) {
       setCollectionIds(existing.collectionIds || []);
-    } else if (lastSelectionRef.current) {
-      setCollectionIds(lastSelectionRef.current);
     } else {
-      setCollectionIds(defaultMyBooks ? [defaultMyBooks.id] : []);
+      setCollectionIds(pickDefaultCollectionIds(collections));
     }
 
     let cancelled = false;
@@ -86,7 +86,7 @@ export default function SearchPage() {
     return () => {
       cancelled = true;
     };
-  }, [selected, books, defaultMyBooks]);
+  }, [selected, books, collections]);
 
   const existing = useMemo(
     () => (selected ? findExistingBook(books, selected) : null),
@@ -103,10 +103,46 @@ export default function SearchPage() {
     setAdding(true);
     try {
       await addBook({ ...enriched, collectionIds });
-      lastSelectionRef.current = collectionIds;
+      setLastCollections(collectionIds);
       close();
     } finally {
       setAdding(false);
+    }
+  };
+
+  const replaceDetails = async () => {
+    if (!enriched || !existing) return;
+    setReplacing(true);
+    try {
+      await updateBook(existing.id, {
+        isbn: enriched.isbn || null,
+        title: enriched.title || existing.title || '',
+        subtitle: enriched.subtitle || '',
+        authors: enriched.authors?.length ? enriched.authors : existing.authors || [],
+        publisher: enriched.publisher || '',
+        publishedYear: enriched.publishedYear || null,
+        pageCount: enriched.pageCount || null,
+        cover: enriched.cover || existing.cover || null,
+        description: enriched.description || existing.description || ''
+      });
+      close();
+    } finally {
+      setReplacing(false);
+    }
+  };
+
+  const applyToTarget = async (mode) => {
+    if (!enriched || !targetBook) return;
+    setReplacing(true);
+    try {
+      const patch = buildPatch(enriched, targetBook, mode);
+      await updateBook(targetBook.id, patch);
+      navigate(`/book/${targetBook.id}`, {
+        replace: true,
+        state: { detailsUpdated: true }
+      });
+    } finally {
+      setReplacing(false);
     }
   };
 
@@ -119,7 +155,19 @@ export default function SearchPage() {
 
   return (
     <>
-      <NavBar title="Find" large />
+      <NavBar
+        title={updateMode ? 'Update Details' : 'Find'}
+        large={!updateMode}
+        back={updateMode ? `/book/${updateMode.bookId}` : undefined}
+      />
+
+      {updateMode && targetBook && (
+        <div className="px-4 pb-3 -mt-1">
+          <div className="ios-card p-3 text-[13px] text-ash">
+            Pick a search result to update <strong className="text-ink">{targetBook.title}</strong>.
+          </div>
+        </div>
+      )}
 
       <div className="px-4 pb-3">
         <div className="relative">
@@ -174,7 +222,11 @@ export default function SearchPage() {
         )}
       </div>
 
-      <Sheet open={!!selected} onClose={close} title="Add this book">
+      <Sheet
+        open={!!selected}
+        onClose={close}
+        title={updateMode ? 'Update with this result?' : 'Add this book'}
+      >
         {enriched && (
           <div className="px-4 pb-6 flex flex-col gap-4">
             <div className="flex gap-4">
@@ -199,23 +251,62 @@ export default function SearchPage() {
               </div>
             </div>
 
-            {existing && (
+            {!updateMode && existing && (
               <div className="ios-card p-3 text-[13px] bg-rose-soft/40 border border-rose-soft text-rose-deep">
                 Already in library · {copiesOf(existing)}{' '}
                 {copiesOf(existing) === 1 ? 'copy' : 'copies'}
               </div>
             )}
 
-            <div>
-              <div className="text-[12px] uppercase tracking-wider text-ash px-1 pb-1.5">
-                Collections
+            {updateMode && targetBook && (
+              <div className="ios-card p-3 text-[13px] text-ash">
+                Will update <strong className="text-ink">{targetBook.title}</strong>. Your
+                copies, collections, and notes will be kept.
               </div>
-              <CollectionPicker value={collectionIds} onChange={setCollectionIds} />
-            </div>
+            )}
 
-            <button onClick={submit} disabled={adding} className="ios-button">
-              {adding ? 'Adding…' : buttonLabel}
-            </button>
+            {!updateMode && (
+              <div>
+                <div className="text-[12px] uppercase tracking-wider text-ash px-1 pb-1.5">
+                  Collections
+                </div>
+                <CollectionPicker value={collectionIds} onChange={setCollectionIds} />
+              </div>
+            )}
+
+            {updateMode ? (
+              <>
+                <button
+                  onClick={() => applyToTarget('replace')}
+                  disabled={replacing}
+                  className="ios-button"
+                >
+                  {replacing ? 'Updating…' : 'Replace all details'}
+                </button>
+                <button
+                  onClick={() => applyToTarget('fill')}
+                  disabled={replacing}
+                  className="ios-button-secondary"
+                >
+                  Only fill in blanks
+                </button>
+              </>
+            ) : (
+              <>
+                <button onClick={submit} disabled={adding || replacing} className="ios-button">
+                  {adding ? 'Adding…' : buttonLabel}
+                </button>
+                {existing && (
+                  <button
+                    onClick={replaceDetails}
+                    disabled={adding || replacing}
+                    className="ios-button-secondary"
+                  >
+                    {replacing ? 'Updating…' : 'Replace existing details with this result'}
+                  </button>
+                )}
+              </>
+            )}
             <button onClick={close} className="ios-button-secondary">
               Cancel
             </button>
@@ -224,6 +315,36 @@ export default function SearchPage() {
       </Sheet>
     </>
   );
+}
+
+function buildPatch(enriched, target, mode) {
+  const fields = {
+    isbn: enriched.isbn || null,
+    title: enriched.title || '',
+    subtitle: enriched.subtitle || '',
+    authors: enriched.authors || [],
+    publisher: enriched.publisher || '',
+    publishedYear: enriched.publishedYear || null,
+    pageCount: enriched.pageCount || null,
+    cover: enriched.cover || null,
+    description: enriched.description || ''
+  };
+  if (mode === 'replace') {
+    return fields;
+  }
+  const patch = {};
+  for (const [k, v] of Object.entries(fields)) {
+    const current = target[k];
+    const isEmpty =
+      current == null ||
+      current === '' ||
+      (Array.isArray(current) && current.length === 0);
+    if (!isEmpty) continue;
+    const hasValue =
+      v != null && v !== '' && !(Array.isArray(v) && v.length === 0);
+    if (hasValue) patch[k] = v;
+  }
+  return patch;
 }
 
 function ResultRow({ book, existing, wishlist, onClick }) {
