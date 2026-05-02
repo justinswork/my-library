@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Search, X, ChevronRight, Library, Star } from 'lucide-react';
 import NavBar from '../components/NavBar.jsx';
@@ -22,42 +22,56 @@ export default function SearchPage() {
   const targetBook = updateMode ? books.find((b) => b.id === updateMode.bookId) : null;
 
   const [query, setQuery] = useState(updateMode?.query || '');
-  const [debounced, setDebounced] = useState(updateMode?.query?.trim() || '');
   const [results, setResults] = useState([]);
   const [searching, setSearching] = useState(false);
+  const [hasSearched, setHasSearched] = useState(false);
   const [selected, setSelected] = useState(null);
   const [enriched, setEnriched] = useState(null);
   const [collectionIds, setCollectionIds] = useState([]);
   const [adding, setAdding] = useState(false);
   const [replacing, setReplacing] = useState(false);
+  const inflightRef = useRef(null);
 
-  useEffect(() => {
-    const t = setTimeout(() => setDebounced(query.trim()), 150);
-    return () => clearTimeout(t);
-  }, [query]);
-
-  useEffect(() => {
-    if (!debounced) {
+  const runSearch = useCallback(async (raw) => {
+    const q = (raw || '').trim();
+    if (!q) {
       setResults([]);
+      setHasSearched(false);
       setSearching(false);
       return;
     }
+    inflightRef.current?.abort();
     const controller = new AbortController();
+    inflightRef.current = controller;
+    setHasSearched(true);
     setSearching(true);
-    searchBooks(debounced, { signal: controller.signal })
-      .then((r) => {
-        if (controller.signal.aborted) return;
-        setResults(r);
-      })
-      .catch((err) => {
-        if (err?.name === 'AbortError') return;
-        setResults([]);
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setSearching(false);
-      });
-    return () => controller.abort();
-  }, [debounced]);
+    try {
+      const r = await searchBooks(q, { signal: controller.signal });
+      if (controller.signal.aborted) return;
+      setResults(r);
+    } catch (err) {
+      if (err?.name !== 'AbortError') setResults([]);
+    } finally {
+      if (!controller.signal.aborted) setSearching(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (updateMode?.query) runSearch(updateMode.query);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const onSubmit = (e) => {
+    e.preventDefault();
+    runSearch(query);
+  };
+
+  const onClear = () => {
+    setQuery('');
+    setResults([]);
+    setHasSearched(false);
+    inflightRef.current?.abort();
+  };
 
   useEffect(() => {
     if (!selected) return;
@@ -79,6 +93,7 @@ export default function SearchPage() {
       if (cancelled || !full) return;
       const merged = { ...selected };
       for (const [k, v] of Object.entries(full)) {
+        if (k === 'cover' && selected.cover) continue;
         if (v != null && v !== '' && !(Array.isArray(v) && v.length === 0)) merged[k] = v;
       }
       setEnriched(merged);
@@ -170,11 +185,12 @@ export default function SearchPage() {
         </div>
       )}
 
-      <div className="px-4 pb-3">
+      <form onSubmit={onSubmit} className="px-4 pb-3">
         <div className="relative">
           <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-ash" />
           <input
             type="search"
+            enterKeyHint="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Title, author, or ISBN"
@@ -189,7 +205,7 @@ export default function SearchPage() {
             query && (
               <button
                 type="button"
-                onClick={() => setQuery('')}
+                onClick={onClear}
                 className="absolute right-2 top-1/2 -translate-y-1/2 text-ash p-1"
               >
                 <X size={16} />
@@ -197,14 +213,14 @@ export default function SearchPage() {
             )
           )}
         </div>
-      </div>
+      </form>
 
       <div className="px-4">
-        {!debounced ? (
+        {!hasSearched ? (
           <EmptyState
             icon={Search}
             title="Find a book"
-            body="Search by title, author, or ISBN to add to your library or wishlist."
+            body="Type a title, author, or ISBN — then press Search."
           />
         ) : results.length === 0 && searching ? (
           <div className="py-12 text-center text-ash">Searching…</div>

@@ -3,12 +3,12 @@ const COVERS = 'https://covers.openlibrary.org/b';
 
 export function coverUrl(coverId, size = 'M') {
   if (!coverId) return null;
-  return `${COVERS}/id/${coverId}-${size}.jpg`;
+  return `${COVERS}/id/${coverId}-${size}.jpg?default=false`;
 }
 
 export function isbnCoverUrl(isbn, size = 'M') {
   if (!isbn) return null;
-  return `${COVERS}/isbn/${isbn}-${size}.jpg`;
+  return `${COVERS}/isbn/${isbn}-${size}.jpg?default=false`;
 }
 
 function parseYear(s) {
@@ -74,8 +74,7 @@ export async function searchBooks(query, { signal } = {}) {
     publisher: (d.publisher || [])[0] || '',
     publishedYear: d.first_publish_year || null,
     pageCount: d.number_of_pages_median || null,
-    cover: d.cover_i ? coverUrl(d.cover_i, 'S') : null,
-    coverMedium: d.cover_i ? coverUrl(d.cover_i, 'M') : null,
+    cover: d.cover_i ? coverUrl(d.cover_i, 'M') : null,
     editionKey: d.cover_edition_key || (d.edition_key || [])[0] || null
   }));
 }

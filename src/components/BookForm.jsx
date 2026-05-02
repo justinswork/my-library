@@ -6,7 +6,15 @@ import Sheet from './Sheet.jsx';
 import { compressImage } from '../utils/image.js';
 import { searchBooks } from '../api/openLibrary.js';
 
-export default function BookForm({ initial = {}, submitLabel = 'Save', onSubmit, busy }) {
+export default function BookForm({
+  initial = {},
+  submitLabel = 'Save',
+  onSubmit,
+  busy,
+  id,
+  onDirtyChange,
+  hideSubmit = false
+}) {
   const [title, setTitle] = useState(initial.title || '');
   const [subtitle, setSubtitle] = useState(initial.subtitle || '');
   const [authors, setAuthors] = useState((initial.authors || []).join(', '));
@@ -31,6 +39,14 @@ export default function BookForm({ initial = {}, submitLabel = 'Save', onSubmit,
   const cameraInputRef = useRef(null);
   const [showCoverSearch, setShowCoverSearch] = useState(false);
 
+  const [dirty, setDirty] = useState(false);
+  const onDirtyRef = useRef(onDirtyChange);
+  onDirtyRef.current = onDirtyChange;
+  useEffect(() => {
+    onDirtyRef.current?.(dirty);
+  }, [dirty]);
+  const markDirty = () => setDirty(true);
+
   const toggleStatus = (status) => {
     setReadStatus((prev) => (prev === status ? null : status));
   };
@@ -38,6 +54,7 @@ export default function BookForm({ initial = {}, submitLabel = 'Save', onSubmit,
   const openCoverSearch = () => setShowCoverSearch(true);
   const pickFoundCover = (url) => {
     setCover(url);
+    markDirty();
     setShowCoverSearch(false);
   };
 
@@ -48,7 +65,10 @@ export default function BookForm({ initial = {}, submitLabel = 'Save', onSubmit,
     setImageBusy(true);
     try {
       const dataUri = await compressImage(file);
-      if (dataUri) setCover(dataUri);
+      if (dataUri) {
+        setCover(dataUri);
+        markDirty();
+      }
     } catch {
       // silent — cover field stays as-is
     } finally {
@@ -59,6 +79,7 @@ export default function BookForm({ initial = {}, submitLabel = 'Save', onSubmit,
   const submit = (e) => {
     e.preventDefault();
     if (!title.trim()) return;
+    setDirty(false);
     onSubmit({
       title: title.trim(),
       subtitle: subtitle.trim(),
@@ -80,7 +101,7 @@ export default function BookForm({ initial = {}, submitLabel = 'Save', onSubmit,
   };
 
   return (
-    <form onSubmit={submit} className="px-4 pb-8 flex flex-col gap-4">
+    <form id={id} onSubmit={submit} onChange={markDirty} className="px-4 pb-8 flex flex-col gap-4">
       <div className="flex flex-col items-center pt-2 gap-3">
         <BookCover src={cover} title={title} size="lg" />
         <div className="flex gap-2 flex-wrap justify-center">
@@ -152,13 +173,19 @@ export default function BookForm({ initial = {}, submitLabel = 'Save', onSubmit,
         <div className="flex gap-2">
           <StatusPill
             active={readStatus === 'read'}
-            onClick={() => toggleStatus('read')}
+            onClick={() => {
+              toggleStatus('read');
+              markDirty();
+            }}
           >
             Read
           </StatusPill>
           <StatusPill
             active={readStatus === 'unread'}
-            onClick={() => toggleStatus('unread')}
+            onClick={() => {
+              toggleStatus('unread');
+              markDirty();
+            }}
           >
             Unread
           </StatusPill>
@@ -260,12 +287,20 @@ export default function BookForm({ initial = {}, submitLabel = 'Save', onSubmit,
         <div className="text-[12px] uppercase tracking-wider text-ash px-1 pb-1.5">
           Collections
         </div>
-        <CollectionPicker value={collectionIds} onChange={setCollectionIds} />
+        <CollectionPicker
+          value={collectionIds}
+          onChange={(v) => {
+            setCollectionIds(v);
+            markDirty();
+          }}
+        />
       </div>
 
-      <button type="submit" disabled={busy || !title.trim()} className="ios-button mt-2">
-        {busy ? 'Saving…' : submitLabel}
-      </button>
+      {!hideSubmit && (
+        <button type="submit" disabled={busy || !title.trim()} className="ios-button mt-2">
+          {busy ? 'Saving…' : submitLabel}
+        </button>
+      )}
     </form>
   );
 }

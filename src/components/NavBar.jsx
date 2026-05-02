@@ -13,7 +13,11 @@ export default function NavBar({ title, large, back, action }) {
         <div className="w-1/4">
           {back && (
             <button
-              onClick={() => (typeof back === 'string' ? navigate(back) : navigate(-1))}
+              onClick={() => {
+                if (typeof back === 'function') return back();
+                if (typeof back === 'string') return navigate(back);
+                return navigate(-1);
+              }}
               className="flex items-center text-rose-deep -ml-2 px-2 py-1 active:opacity-60"
             >
               <ChevronLeft size={28} strokeWidth={2.2} />

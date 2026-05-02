@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { BookOpen } from 'lucide-react';
 
 export default function BookCover({ src, title, size = 'md', className = '' }) {
@@ -9,18 +10,21 @@ export default function BookCover({ src, title, size = 'md', className = '' }) {
     xl: 'w-40 h-60 text-base'
   };
   const dim = sizes[size] || sizes.md;
+  const [errored, setErrored] = useState(false);
 
-  if (src) {
+  useEffect(() => {
+    setErrored(false);
+  }, [src]);
+
+  if (src && !errored) {
     return (
       <img
         src={src}
         alt={title || ''}
         loading="lazy"
+        decoding="async"
         className={`${dim} object-cover rounded-md bg-hairline shadow-card ${className}`}
-        onError={(e) => {
-          e.currentTarget.style.display = 'none';
-          e.currentTarget.nextSibling?.style.setProperty('display', 'flex');
-        }}
+        onError={() => setErrored(true)}
       />
     );
   }
