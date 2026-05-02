@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
+import { Flashlight, FlashlightOff } from 'lucide-react';
 
 const REGION_ID = 'isbn-scanner-region';
 const FORMATS = [
@@ -15,6 +16,9 @@ export default function Scanner({ onDetected, paused }) {
   const startedRef = useRef(false);
   const [error, setError] = useState('');
   const [attempt, setAttempt] = useState(0);
+  const [torchSupported, setTorchSupported] = useState(false);
+  const [torchOn, setTorchOn] = useState(false);
+  const [tapPoint, setTapPoint] = useState(null);
 
   useEffect(() => {
     let scanner;
@@ -52,11 +56,11 @@ export default function Scanner({ onDetected, paused }) {
         );
         startedRef.current = true;
         upgradeStream();
+        detectTorchSupport(setTorchSupported);
       } catch (err) {
         console.error('Scanner start failed:', err);
         if (!cancelled) {
-          const msg =
-            err?.message || err?.name || 'Could not start camera';
+          const msg = err?.message || err?.name || 'Could not start camera';
           setError(msg);
         }
       }
@@ -70,13 +74,10 @@ export default function Scanner({ onDetected, paused }) {
         s.stop().then(() => s.clear()).catch(() => {});
         startedRef.current = false;
       }
+      setTorchOn(false);
+      setTorchSupported(false);
     };
   }, [attempt]);
-
-  const retry = () => {
-    setError('');
-    setAttempt((n) => n + 1);
-  };
 
   useEffect(() => {
     const s = ref.current;
@@ -89,17 +90,39 @@ export default function Scanner({ onDetected, paused }) {
     }
   }, [paused]);
 
+  const retry = () => {
+    setError('');
+    setAttempt((n) => n + 1);
+  };
+
+  const toggleTorch = async (e) => {
+    e.stopPropagation();
+    const track = getTrack();
+    if (!track) return;
+    try {
+      await track.applyConstraints({ advanced: [{ torch: !torchOn }] });
+      setTorchOn(!torchOn);
+    } catch (err) {
+      console.error('Torch toggle failed:', err);
+    }
+  };
+
   const handleTapFocus = (e) => {
     const video = getVideo();
     if (!video) return;
     const rect = video.getBoundingClientRect();
-    const x = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
-    const y = Math.min(1, Math.max(0, (e.clientY - rect.top) / rect.height));
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    setTapPoint({ x, y, key: Date.now() });
+    setTimeout(() => setTapPoint((p) => (p?.key === tapPoint?.key ? null : p)), 800);
+
     const track = getTrack();
     if (!track) return;
+    const nx = Math.min(1, Math.max(0, x / rect.width));
+    const ny = Math.min(1, Math.max(0, y / rect.height));
     track
       .applyConstraints({
-        advanced: [{ pointsOfInterest: [{ x, y }], focusMode: 'single-shot' }]
+        advanced: [{ pointsOfInterest: [{ x: nx, y: ny }], focusMode: 'single-shot' }]
       })
       .catch(() => {})
       .finally(() => {
@@ -118,6 +141,33 @@ export default function Scanner({ onDetected, paused }) {
         onClick={handleTapFocus}
         className="w-full overflow-hidden rounded-2xl bg-black aspect-[3/4] cursor-pointer"
       />
+
+      {!error && torchSupported && (
+        <button
+          type="button"
+          onClick={toggleTorch}
+          aria-label={torchOn ? 'Turn off flashlight' : 'Turn on flashlight'}
+          aria-pressed={torchOn}
+          className={`absolute top-3 right-3 w-11 h-11 rounded-full flex items-center justify-center shadow-card transition-colors ${
+            torchOn ? 'bg-white text-rose-deep' : 'bg-black/50 text-white'
+          }`}
+        >
+          {torchOn ? <Flashlight size={20} /> : <FlashlightOff size={20} />}
+        </button>
+      )}
+
+      {tapPoint && (
+        <div
+          className="absolute pointer-events-none rounded-full border-2 border-white animate-[focusRing_0.7s_ease-out_forwards]"
+          style={{
+            left: tapPoint.x - 30,
+            top: tapPoint.y - 30,
+            width: 60,
+            height: 60
+          }}
+        />
+      )}
+
       {error && (
         <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-6 text-white bg-black/80 rounded-2xl gap-3">
           <div>
@@ -136,6 +186,14 @@ export default function Scanner({ onDetected, paused }) {
           </button>
         </div>
       )}
+
+      <style>{`
+        @keyframes focusRing {
+          0%   { transform: scale(1.4); opacity: 0; }
+          30%  { transform: scale(1); opacity: 1; }
+          100% { transform: scale(0.85); opacity: 0; }
+        }
+      `}</style>
     </div>
   );
 }
@@ -147,6 +205,13 @@ function getVideo() {
 function getTrack() {
   const video = getVideo();
   return video?.srcObject?.getVideoTracks?.()?.[0] || null;
+}
+
+function detectTorchSupport(setSupported) {
+  const track = getTrack();
+  if (!track) return;
+  const caps = typeof track.getCapabilities === 'function' ? track.getCapabilities() : {};
+  setSupported(!!caps.torch);
 }
 
 function upgradeStream() {
