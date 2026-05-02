@@ -7,7 +7,7 @@ import Sheet from '../components/Sheet.jsx';
 import CollectionPicker from '../components/CollectionPicker.jsx';
 import EmptyState from '../components/EmptyState.jsx';
 import { useData } from '../contexts/DataContext.jsx';
-import { searchBooks, lookupByISBN, lookupByOLID } from '../api/openLibrary.js';
+import { searchBooks } from '../api/openLibrary.js';
 import { authorList, findExistingBook, copiesOf } from '../utils/book.js';
 import {
   pickDefaultCollectionIds,
@@ -26,7 +26,6 @@ export default function SearchPage() {
   const [searching, setSearching] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
   const [selected, setSelected] = useState(null);
-  const [enriched, setEnriched] = useState(null);
   const [collectionIds, setCollectionIds] = useState([]);
   const [adding, setAdding] = useState(false);
   const [replacing, setReplacing] = useState(false);
@@ -75,33 +74,12 @@ export default function SearchPage() {
 
   useEffect(() => {
     if (!selected) return;
-    setEnriched(selected);
-
     const existing = findExistingBook(books, selected);
     if (existing) {
       setCollectionIds(existing.collectionIds || []);
     } else {
       setCollectionIds(pickDefaultCollectionIds(collections));
     }
-
-    let cancelled = false;
-    const enrich = async () => {
-      let full = null;
-      if (selected.isbn) full = await lookupByISBN(selected.isbn).catch(() => null);
-      if (!full && selected.editionKey)
-        full = await lookupByOLID(selected.editionKey).catch(() => null);
-      if (cancelled || !full) return;
-      const merged = { ...selected };
-      for (const [k, v] of Object.entries(full)) {
-        if (k === 'cover' && selected.cover) continue;
-        if (v != null && v !== '' && !(Array.isArray(v) && v.length === 0)) merged[k] = v;
-      }
-      setEnriched(merged);
-    };
-    enrich();
-    return () => {
-      cancelled = true;
-    };
   }, [selected, books, collections]);
 
   const existing = useMemo(
@@ -111,14 +89,13 @@ export default function SearchPage() {
 
   const close = () => {
     setSelected(null);
-    setEnriched(null);
   };
 
   const submit = async () => {
-    if (!enriched) return;
+    if (!selected) return;
     setAdding(true);
     try {
-      await addBook({ ...enriched, collectionIds });
+      await addBook({ ...selected, collectionIds });
       setLastCollections(collectionIds);
       close();
     } finally {
@@ -127,19 +104,18 @@ export default function SearchPage() {
   };
 
   const replaceDetails = async () => {
-    if (!enriched || !existing) return;
+    if (!selected || !existing) return;
     setReplacing(true);
     try {
       await updateBook(existing.id, {
-        isbn: enriched.isbn || null,
-        title: enriched.title || existing.title || '',
-        subtitle: enriched.subtitle || '',
-        authors: enriched.authors?.length ? enriched.authors : existing.authors || [],
-        publisher: enriched.publisher || '',
-        publishedYear: enriched.publishedYear || null,
-        pageCount: enriched.pageCount || null,
-        cover: enriched.cover || existing.cover || null,
-        description: enriched.description || existing.description || ''
+        isbn: selected.isbn || null,
+        title: selected.title || existing.title || '',
+        subtitle: selected.subtitle || '',
+        authors: selected.authors?.length ? selected.authors : existing.authors || [],
+        publisher: selected.publisher || '',
+        publishedYear: selected.publishedYear || null,
+        pageCount: selected.pageCount || null,
+        cover: selected.cover || existing.cover || null
       });
       close();
     } finally {
@@ -148,10 +124,10 @@ export default function SearchPage() {
   };
 
   const applyToTarget = async (mode) => {
-    if (!enriched || !targetBook) return;
+    if (!selected || !targetBook) return;
     setReplacing(true);
     try {
-      const patch = buildPatch(enriched, targetBook, mode);
+      const patch = buildPatch(selected, targetBook, mode);
       await updateBook(targetBook.id, patch);
       navigate(`/book/${targetBook.id}`, {
         replace: true,
@@ -250,26 +226,26 @@ export default function SearchPage() {
         onClose={close}
         title={updateMode ? 'Update with this result?' : 'Add this book'}
       >
-        {enriched && (
+        {selected && (
           <div className="px-4 pb-6 flex flex-col gap-4">
             <div className="flex gap-4">
-              <BookCover src={enriched.cover} title={enriched.title} size="md" />
+              <BookCover src={selected.cover} title={selected.title} size="md" />
               <div className="flex-1 min-w-0">
-                <div className="font-bold text-[18px] leading-snug">{enriched.title}</div>
-                {enriched.subtitle && (
-                  <div className="text-[14px] text-ash mt-0.5">{enriched.subtitle}</div>
+                <div className="font-bold text-[18px] leading-snug">{selected.title}</div>
+                {selected.subtitle && (
+                  <div className="text-[14px] text-ash mt-0.5">{selected.subtitle}</div>
                 )}
-                {authorList(enriched) && (
-                  <div className="text-[14px] mt-1">{authorList(enriched)}</div>
+                {authorList(selected) && (
+                  <div className="text-[14px] mt-1">{authorList(selected)}</div>
                 )}
-                {enriched.publisher && (
+                {selected.publisher && (
                   <div className="text-[12px] text-ash mt-1">
-                    {enriched.publisher}
-                    {enriched.publishedYear ? ` · ${enriched.publishedYear}` : ''}
+                    {selected.publisher}
+                    {selected.publishedYear ? ` · ${selected.publishedYear}` : ''}
                   </div>
                 )}
-                {enriched.isbn && (
-                  <div className="text-[11px] font-mono text-ash mt-1">ISBN {enriched.isbn}</div>
+                {selected.isbn && (
+                  <div className="text-[11px] font-mono text-ash mt-1">ISBN {selected.isbn}</div>
                 )}
               </div>
             </div>

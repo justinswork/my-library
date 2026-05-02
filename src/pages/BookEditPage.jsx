@@ -29,11 +29,11 @@ export default function BookEditPage() {
     let consumedByConfirm = false;
     window.history.pushState({ editGuard: true }, '');
     const onPop = () => {
+      if (window.history.state?.editGuard) return;
       if (window.confirm(DISCARD_PROMPT)) {
         consumedByConfirm = true;
-        navigate(-1);
       } else {
-        window.history.pushState({ editGuard: true }, '');
+        window.history.forward();
       }
     };
     window.addEventListener('popstate', onPop);
@@ -45,7 +45,7 @@ export default function BookEditPage() {
         window.history.back();
       }
     };
-  }, [dirty, navigate]);
+  }, [dirty]);
 
   if (!loaded) return <Loader />;
   const book = books.find((b) => b.id === id);
